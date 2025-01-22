@@ -1,5 +1,6 @@
 #include "ModelBase.h"
-
+#include <future>
+#include <functional>
 
 namespace nlb
 {
@@ -104,9 +105,24 @@ namespace nlb
 
     void ModelBase::sample_n(unsigned int N)
     {
-        #pragma omp parallel for
-        for (unsigned int i = 0; i < this->n_graphs; i++)
-            this->graphs[i]->sample(N);
+        std::vector<std::future<void>> futures;
+        futures.reserve(this->n_graphs);
+
+        // Launch tasks
+        for (unsigned int i = 0; i < this->n_graphs; i++) {
+            futures.push_back(
+                std::async(std::launch::async,
+                    [](std::reference_wrapper<GraphBase> graph, unsigned int samples) {
+                        graph.get().sample(samples);
+                    },
+                    std::ref(*this->graphs[i]), N)
+            );
+        }
+
+        // Wait for all tasks to complete
+        for (auto& future : futures) {
+            future.wait();
+        }
 
         this->total_sampled += N;
     }
